@@ -1,0 +1,8 @@
+{
+  "uuid": "invert-touchpad-swipe@local",
+  "name": "Invert Vertical Touchpad Swipe",
+  "description": "Reverses the direction of vertical touchpad swipe gestures (three or more fingers) without changing the touchpad scroll direction. Horizontal workspace swipes, two-finger scrolling and touchscreen panning are left alone.",
+  "shell-version": ["50"],
+  "url": "https://github.com/watbe/invert-touchpad-swipe",
+  "version-name": "1.0"
+}
