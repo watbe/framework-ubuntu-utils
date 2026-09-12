@@ -39,6 +39,22 @@ def validate_common(text):
                      "with pam-auth-update if enabled; custom/MFA stacks need manual review.")
 
 
+def validate_password(text):
+    # common-auth alone does not prove GDM exposes a password path. Recognize
+    # Ubuntu's password service explicitly before removing fingerprint access.
+    non_auth_includes = {"@include common-account", "@include common-session",
+                         "@include common-session-noninteractive", "@include common-password"}
+    auth = [line for line in active_lines(text)
+            if line not in non_auth_includes
+            and line.split()[0] not in {"account", "session", "password", "-session"}]
+    expected = ["auth requisite pam_nologin.so",
+                "auth required pam_succeed_if.so user != root quiet_success",
+                "@include common-auth", "auth optional pam_gnome_keyring.so"]
+    if auth != expected or "\\\n" in text:
+        raise ValueError("Unrecognized gdm-password authentication stack; restore a working "
+                         "standard password login and test it before installing.")
+
+
 def admin_pam(text):
     # Only support the standard Ubuntu service stack, where common-auth is the
     # sole authentication entry point. Keep account/session/password rules.
@@ -157,6 +173,12 @@ class Installer:
         if not self.path("/usr/share/gdm/generate-config").exists():
             raise ValueError("Ubuntu GDM configuration generator is missing.")
         validate_common(self.pam("common-auth"))
+        try:
+            password = self.pam("gdm-password")
+        except FileNotFoundError as error:
+            raise ValueError("Missing gdm-password PAM service; restore and test password "
+                             "login before installing.") from error
+        validate_password(password)
         helper = self.path(HELPER)
         if helper.exists() or helper.is_symlink():
             raise ValueError(f"Unmanaged helper already exists: {helper}")
@@ -189,7 +211,7 @@ class Installer:
             raise ValueError("Files changed since installation; refusing to overwrite: "
                              + ", ".join(conflicts) + f". Original backups are in {STATE}.")
 
-    def install(self, dry_run=False):
+    def install(self, dry_run=False, password_login_verified=False):
         state_path = self.path(STATE)
         regular(state_path)
         if state_path.exists():
@@ -208,6 +230,10 @@ class Installer:
         if dry_run:
             print("Preflight passed. Would install/update:\n" + "\n".join(changes))
             return
+        if not password_login_verified:
+            raise ValueError("First test a fresh GDM login and screen unlock using your password, "
+                             "then rerun with --password-login-verified. PAM configuration "
+                             "checks cannot verify your password or desktop preferences.")
         state_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         atomic_write(state_path, json.dumps(state, indent=2).encode(), 0o600)
         try:
@@ -241,6 +267,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--uninstall", action="store_true", help="restore pre-installation configuration")
     parser.add_argument("--dry-run", action="store_true", help="validate and describe changes without writing")
+    parser.add_argument("--password-login-verified", action="store_true",
+                        help="confirm you successfully tested a fresh GDM password login and password unlock")
     args = parser.parse_args()
     if not args.dry_run and os.geteuid() != 0:
         parser.error("Run with sudo, or use --dry-run for read-only preflight.")
@@ -252,7 +280,10 @@ def main():
             # Serialize installs/removals without placing a writable lock in /tmp.
             with open("/run/lock/framework-lid-aware-fingerprint.lock", "w") as lock:
                 fcntl.flock(lock, fcntl.LOCK_EX)
-                (installer.uninstall if args.uninstall else installer.install)()
+                if args.uninstall:
+                    installer.uninstall()
+                else:
+                    installer.install(password_login_verified=args.password_login_verified)
     except (OSError, ValueError) as error:
         print(f"Error: {error}", file=sys.stderr)
         return 1

@@ -30,10 +30,14 @@ Inspect the planned changes:
 python3 install-lid-aware-fingerprint.py --dry-run
 ```
 
-Keep a separate authenticated root terminal open during installation and testing (`sudo -i`), so you can remove the changes if necessary. Install:
+Before installing, save your work, log out, and complete a fresh GDM login **using your password**. Then lock the screen and verify that you can unlock it using your password. Repeat for other accounts that need access. Do not proceed if either password path fails or is unavailable. A successful `sudo` prompt alone does not test GDM login.
+
+The installer rejects missing or unfamiliar `gdm-password` authentication rules. This static check cannot establish that your password works, your account is usable, or your desktop preferences expose password authentication. The `--password-login-verified` flag acknowledges that you completed the manual checks; it does not perform authentication itself.
+
+After those checks, keep a separate authenticated root terminal open during installation and testing (`sudo -i`), so you can remove the changes if necessary. Install:
 
 ```sh
-sudo python3 install-lid-aware-fingerprint.py
+sudo python3 install-lid-aware-fingerprint.py --password-login-verified
 ```
 
 New PAM authentication attempts use the changes immediately. **Reboot to apply the initial-login setting.** The script does not restart GDM, terminate your session, change fingerprint enrollment, or install packages.

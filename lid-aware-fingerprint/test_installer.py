@@ -4,9 +4,10 @@ import ctypes.util
 import importlib.util
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import mock_open, patch
 
 HERE = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location("installer", HERE / "install-lid-aware-fingerprint.py")
@@ -33,6 +34,8 @@ session required pam_limits.so
 password required pam_fprintd.so
 """
 
+PASSWORD = FINGERPRINT.replace("auth required pam_fprintd.so", "@include common-auth")
+
 
 class InstallerTests(unittest.TestCase):
     def setUp(self):
@@ -44,6 +47,7 @@ class InstallerTests(unittest.TestCase):
             "/etc/os-release": 'ID=ubuntu\nVERSION_ID="26.04"\n',
             "/etc/pam.d/common-auth": COMMON,
             "/etc/pam.d/gdm-fingerprint": FINGERPRINT,
+            "/etc/pam.d/gdm-password": PASSWORD,
             "/etc/pam.d/sudo": ADMIN,
             "/etc/pam.d/sudo-i": ADMIN,
             "/usr/lib/pam.d/polkit-1": ADMIN,
@@ -66,12 +70,12 @@ class InstallerTests(unittest.TestCase):
     def test_install_repeat_remove_and_vendor_override(self):
         self.installer.install(dry_run=True)
         self.assertEqual(self.contents(), self.original)
-        self.installer.install()
+        self.installer.install(password_login_verified=True)
         installed = self.contents()
         self.assertIn("etc/pam.d/polkit-1", installed)
         self.assertEqual(installed["usr/lib/pam.d/polkit-1"], ADMIN.encode())
         self.assertEqual(installed["etc/pam.d/common-auth"], COMMON.encode())
-        self.installer.install()
+        self.installer.install(password_login_verified=True)
         self.assertEqual(self.contents(), installed)
         self.installer.uninstall(dry_run=True)
         self.assertEqual(self.contents(), installed)
@@ -84,7 +88,7 @@ class InstallerTests(unittest.TestCase):
         path.write_text(COMMON + "auth required pam_other_mfa.so\n")
         before = self.contents()
         with self.assertRaises(ValueError):
-            self.installer.install()
+            self.installer.install(password_login_verified=True)
         self.assertEqual(self.contents(), before)
 
     def test_custom_service_rejected(self):
@@ -94,8 +98,54 @@ class InstallerTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 mod.admin_pam(text)
 
+    def test_password_stack_rejected_before_writes(self):
+        path = self.installer.path("/etc/pam.d/gdm-password")
+        for text in (None, "auth requisite pam_deny.so\n",
+                     PASSWORD.replace("@include common-auth", ""),
+                     PASSWORD + "auth required pam_other_mfa.so\n",
+                     PASSWORD + "@include common-custom\n",
+                     PASSWORD + "@include common-auth\n",
+                     PASSWORD.replace("@include common-auth", "@include common-auth\\\n")):
+            for dry_run in (False, True):
+                with self.subTest(text=text, dry_run=dry_run):
+                    if text is None:
+                        path.unlink(missing_ok=True)
+                    else:
+                        path.write_text(text)
+                    before = self.contents()
+                    with self.assertRaisesRegex(ValueError, "gdm-password"):
+                        self.installer.install(dry_run=dry_run, password_login_verified=True)
+                    self.assertEqual(self.contents(), before)
+
+    def test_vendor_password_stack_supported_without_modification(self):
+        local = self.installer.path("/etc/pam.d/gdm-password")
+        vendor = self.installer.path("/usr/lib/pam.d/gdm-password")
+        vendor.write_text(local.read_text().replace("auth required", "auth\t required")
+                          + "# vendor configuration\n")
+        local.unlink()
+        before = self.contents()
+        self.installer.install(password_login_verified=True)
+        self.assertFalse(local.exists())
+        self.installer.uninstall()
+        self.assertEqual(self.contents(), before)
+
+    def test_password_login_confirmation_required_before_writes(self):
+        with self.assertRaisesRegex(ValueError, "--password-login-verified"):
+            self.installer.install()
+        self.assertEqual(self.contents(), self.original)
+
+    def test_cli_forwards_password_login_confirmation(self):
+        for verified in (False, True):
+            args = ["installer"] + (["--password-login-verified"] if verified else [])
+            with self.subTest(verified=verified), patch.object(sys, "argv", args), \
+                    patch.object(mod.os, "geteuid", return_value=0), \
+                    patch("builtins.open", mock_open()), patch.object(mod.fcntl, "flock"), \
+                    patch.object(mod.Installer, "install") as install:
+                self.assertEqual(mod.main(), 0)
+                install.assert_called_once_with(password_login_verified=verified)
+
     def test_restore_refuses_later_edits_before_changing_anything(self):
-        self.installer.install()
+        self.installer.install(password_login_verified=True)
         self.installer.path("/etc/pam.d/sudo").write_text(ADMIN + "# later edit\n")
         before = self.contents()
         with self.assertRaises(ValueError):
@@ -115,11 +165,11 @@ class InstallerTests(unittest.TestCase):
 
         with patch.object(mod, "atomic_write", side_effect=fail_once):
             with self.assertRaises(OSError):
-                self.installer.install()
+                self.installer.install(password_login_verified=True)
         self.assertEqual(self.contents(), self.original)
 
     def test_interrupted_install_can_be_removed(self):
-        self.installer.install()
+        self.installer.install(password_login_verified=True)
         # Simulate a file that was not yet changed when installation stopped.
         self.installer.path("/etc/pam.d/sudo").write_text(ADMIN)
         self.installer.uninstall()
@@ -130,7 +180,7 @@ class InstallerTests(unittest.TestCase):
         path.unlink()
         path.symlink_to(self.installer.path("/usr/lib/pam.d/polkit-1"))
         with self.assertRaises(ValueError):
-            self.installer.install()
+            self.installer.install(password_login_verified=True)
 
     def test_helper_open_closed_missing_unknown_multiple(self):
         helper = (HERE / "lid-is-open.sh").read_text().replace(
