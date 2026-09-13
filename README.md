@@ -4,6 +4,7 @@ A small collection of utilities to improve the Ubuntu experience on the Framewor
 
 ## Utilities
 
+- [ZSA Keymapp permissions fix](zsa-keymapp-fix/README.md) grants plugdev members access to ZSA keyboards so Keymapp can connect without permission errors.
 - [Magic Trackpad fix](magic-trackpad-fix/README.md) keeps a wired Apple Magic Trackpad 2 working when the laptop lid is closed by marking it as an external touchpad.
 - [Single-instance AppImage wrappers](appimage-wrapper/README.md) generates launchers that prevent duplicate AppImage instances and automatically select the newest matching version in the application directory.
 - [Invert vertical touchpad swipe](invert-touchpad-swipe/README.md) reverses vertical three- and four-finger touchpad gestures in GNOME Shell 50 while keeping scrolling and horizontal workspace swipes unchanged.
