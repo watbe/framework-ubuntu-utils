@@ -6,6 +6,7 @@ A small collection of utilities to improve the Ubuntu experience on the Framewor
 
 - [ZSA Keymapp permissions fix](zsa-keymapp-fix/README.md) grants plugdev members access to ZSA keyboards so Keymapp can connect without permission errors.
 - [Magic Trackpad fix](magic-trackpad-fix/README.md) keeps a wired Apple Magic Trackpad 2 working when the laptop lid is closed by marking it as an external touchpad.
+- [USB and Bluetooth suspend wake](mouse-wakeup/README.md) lets you choose eligible devices, including mice and Bluetooth trackpads, that may wake the laptop from suspend.
 - [Single-instance AppImage wrappers](appimage-wrapper/README.md) generates launchers that prevent duplicate AppImage instances and automatically select the newest matching version in the application directory.
 - [Invert vertical touchpad swipe](invert-touchpad-swipe/README.md) reverses vertical three- and four-finger touchpad gestures in GNOME Shell 50 while keeping scrolling and horizontal workspace swipes unchanged.
 - [Lid-aware fingerprint authentication](lid-aware-fingerprint/README.md) requires a password for initial GNOME login and offers fingerprints for unlocking, sudo, and administrative prompts only when the laptop lid is open, with install and removal support.
