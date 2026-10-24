@@ -58,6 +58,23 @@ The password-only initial-login setting is applied separately to GDM's greeter. 
 
 ## Remove
 
+### Updating an existing installation
+
+To apply the fix for flashing fingerprint errors with the lid closed, remove the
+old version and install the updated version. Running install alone checks the
+existing installation but does not upgrade its files. From this directory:
+
+```sh
+sudo python3 install-lid-aware-fingerprint.py --uninstall
+sudo python3 install-lid-aware-fingerprint.py --password-login-verified
+```
+
+The verification flag still means you have tested password login and unlocking.
+Start a new lock/unlock attempt to use the updated PAM rule. A reboot is not
+needed for this specific update if the initial-login setting was already active.
+
+### Uninstalling
+
 ```sh
 sudo python3 install-lid-aware-fingerprint.py --uninstall --dry-run
 sudo python3 install-lid-aware-fingerprint.py --uninstall
@@ -74,17 +91,17 @@ If a managed file was edited or replaced by a package update, removal stops **be
 The installer makes local changes to:
 
 - `/etc/gdm3/greeter.dconf-defaults`: disables fingerprints in the initial login greeter. Ubuntu's GDM startup compiles this file automatically.
-- `/etc/pam.d/gdm-fingerprint`: inserts a `requisite` lid check immediately before fingerprint authentication. Closed or unknown lid state fails this authentication path; GDM's separate password path remains available.
+- `/etc/pam.d/gdm-fingerprint`: inserts a `requisite` lid check immediately before fingerprint authentication. With `--wait-for-open`, closed or unknown lid state keeps this path waiting silently while GDM's separate password path remains available. The helper checks once per second and exits if its GDM worker exits. `type=auth` prevents waiting during credential setup.
 - `/etc/pam.d/sudo`, `/etc/pam.d/sudo-i`, and `/etc/pam.d/polkit-1`: inserts a conditional fingerprint attempt before `common-auth`. A failed lid check skips just the fingerprint module. Successful fingerprints authenticate; a failed scan or timeout proceeds to the existing password stack. Account and session rules still apply.
 - `/usr/local/libexec/framework-lid-is-open`: installs `lid-is-open.sh` as a root-owned executable. It accepts only an explicit `open` state from every lid under `/proc/acpi/button/lid/*/state`.
 
 If a PAM service has no file in `/etc/pam.d`, the installer reads `/usr/lib/pam.d` and creates a local override. Vendor files and `common-auth` are not modified. Because local PAM overrides take precedence, review this utility after major PAM/Ubuntu upgrades; it intentionally supports only Ubuntu 26.04 and recognized service layouts.
 
-The GDM check must **fail** the fingerprint stack when the lid is closed, rather than skipping its authentication module and accidentally allowing success without verification. The administrative stacks instead skip the optional fingerprint attempt and continue to password verification. The lid check by itself never authenticates a user.
+The GDM check must not skip its fingerprint module and accidentally allow success without verification. Earlier versions returned a failure for a closed lid; GNOME interpreted that as a failed scan, displayed an error, and retried repeatedly. The helper now waits without returning an authentication result until the lid opens. GDM can still complete password authentication independently. The administrative stacks instead skip the optional fingerprint attempt and continue to password verification. The lid check by itself never authenticates a user.
 
 ## Behavior and limitations
 
-- Lid state is sampled when authentication starts. Closing the lid during an active scan does not cancel it; reopening the lid may require starting a new authentication attempt.
+- Lid state is sampled when authentication starts. GDM also checks every second while waiting for the lid to open. Closing the lid during an active scan does not cancel that scan; a subsequent attempt waits silently.
 - For `sudo` and Polkit, fingerprints and passwords run sequentially. An open lid allows one scan attempt, with a 10-second timeout before password fallback. GDM provides its own separate password path.
 - Polkit may ask to authenticate an administrator other than the current user. That account needs enrolled fingerprints. The script does not change which account Polkit or sudo selects, authorization policies, or credential caching.
 - GNOME keyring unlock dialogs are separate from Polkit and still require the keyring password. This does not change disk-encryption prompts, SSH, TTY login, `su`, KDE, or applications using other PAM services.

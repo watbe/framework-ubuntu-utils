@@ -206,6 +206,36 @@ class InstallerTests(unittest.TestCase):
             self.installer.path("/etc/gdm3/greeter.dconf-defaults").read_text()))
         subprocess.run(["dconf", "compile", str(self.root / "compiled"), str(source)], check=True)
 
+    def test_gdm_helper_waits_silently_until_open(self):
+        helper = (HERE / "lid-is-open.sh").read_text().replace(
+            "/proc/acpi/button/lid", str(self.root / "proc/acpi/button/lid"))
+        path = self.installer.path("/proc/acpi/button/lid/LID0/state")
+        with subprocess.Popen(["sh", "-c", helper, "helper", "--wait-for-open"],
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE) as process:
+            try:
+                with self.assertRaises(subprocess.TimeoutExpired):
+                    process.wait(timeout=1.2)
+                path.write_text("state: open\n")
+                stdout, stderr = process.communicate(timeout=3)
+                self.assertEqual(process.returncode, 0)
+                self.assertEqual((stdout, stderr), (b"", b""))
+            finally:
+                if process.poll() is None:
+                    process.kill()
+
+    def test_wait_helper_exits_when_worker_exits(self):
+        helper = self.root / "helper.sh"
+        helper.write_text((HERE / "lid-is-open.sh").read_text().replace(
+            "/proc/acpi/button/lid", str(self.root / "proc/acpi/button/lid")))
+        # A short-lived parent stands in for a cancelled GDM worker. The helper
+        # inherits stdout; communicate cannot finish until it exits as well.
+        parent = ("import subprocess,sys,time; "
+                  "subprocess.Popen(['sh',sys.argv[1],'--wait-for-open']); time.sleep(0.3)")
+        result = subprocess.run([sys.executable, "-c", parent, str(helper)],
+                                capture_output=True, timeout=4)
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual((result.stdout, result.stderr), (b"", b""))
+
 
 class PamFlowTests(unittest.TestCase):
     @classmethod
@@ -254,7 +284,7 @@ class PamFlowTests(unittest.TestCase):
         for lid_open in (False, True):
             for fingerprint in (False, True):
                 text = mod.fingerprint_pam(FINGERPRINT)
-                text = text.replace(f"pam_exec.so quiet {mod.HELPER}",
+                text = text.replace(f"pam_exec.so quiet type=auth {mod.HELPER} --wait-for-open",
                                     "pam_permit.so" if lid_open else "pam_deny.so")
                 text = text.replace("pam_fprintd.so", "pam_permit.so" if fingerprint else "pam_deny.so")
                 text = text.replace("pam_nologin.so", "pam_permit.so")

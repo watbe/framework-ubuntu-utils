@@ -83,7 +83,8 @@ def fingerprint_pam(text):
     pattern = r"(?m)^auth[ \t]+required[ \t]+pam_fprintd\.so[ \t]*(?:#.*)?$"
     if len(re.findall(pattern, text)) != 1:
         raise ValueError("Expected one unmodified auth required pam_fprintd.so in gdm-fingerprint.")
-    return re.sub(pattern, lambda m: f"{MARKER}\nauth requisite pam_exec.so quiet {HELPER}\n{m[0]}", text)
+    return re.sub(pattern, lambda m: (
+        f"{MARKER}\nauth requisite pam_exec.so quiet type=auth {HELPER} --wait-for-open\n{m[0]}"), text)
 
 
 def greeter_config(text):
