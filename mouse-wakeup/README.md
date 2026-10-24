@@ -28,9 +28,6 @@ For noninteractive use, pass the IDs printed by `--list`:
 sudo bash mouse-wakeup/install.sh --device 'ID_FROM_LIST' --device 'ANOTHER_ID'
 ```
 
-The old G700s-only installer at this path is superseded by this chooser.
-Installation removes its old `91-logitech-g700s-wakeup.rules` file, if present.
-
 ## Eligible devices and shared hardware
 
 - USB candidates must expose a nonempty `power/wakeup` control. Hubs are not
@@ -58,11 +55,6 @@ prove that the device, firmware and dock will successfully resume the laptop.
 Clicking versus movement behavior depends on the device. A manual suspend test
 is still required for each selection.
 
-On this machine on 24 October 2026, the Bluetooth Magic Trackpad already had
-`WakeAllowed=true`, while the Intel PCI Bluetooth adapter (`8086:e476`,
-`btintel_pcie`) had `power/wakeup=disabled`. Selecting the trackpad enables
-that adapter path as well as setting the device's BlueZ policy.
-
 ## Removal and recovery
 
 ```sh
@@ -88,24 +80,6 @@ Undo information is saved before settings are applied and retained if an
 operation fails, so `--uninstall` can recover a partial installation. Repeated
 installation preserves the recorded original settings rather than recording
 the enabled settings as a new baseline.
-
-## Screen blanking and suspend policy
-
-This utility changes suspend-wake permissions, not screen-lock or automatic
-suspend policy. The separate wired Magic Trackpad classification fix is also
-unchanged. When only the display is blank, normal mouse/trackpad activity
-should wake it without a suspend-wake rule. The G700s successfully woke the
-external display in unlocked and locked-screen tests on 24 October 2026;
-the previously reported intermittent display-only failure was not reproduced.
-
-The existing docked-AC keep-awake workaround may block a manual suspend test.
-If needed, pause it and restore it afterwards:
-
-```sh
-systemctl --user stop framework-dock-wake.service
-# Suspend through Ubuntu's system menu and test your selected devices.
-systemctl --user start framework-dock-wake.service
-```
 
 ## Requirements and validation
 
